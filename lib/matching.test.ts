@@ -59,9 +59,9 @@ describe("age requirement", () => {
 });
 
 describe("prior-treatment exclusion", () => {
-  it("previous gene therapy → conflict", () => expect(status("no_prior_gene_therapy", { ...ok, priorGeneTherapy: "yes" })).toBe("conflict"));
-  it("unknown history → needs_information", () => expect(status("no_prior_gene_therapy", { ...ok, priorGeneTherapy: "unknown" })).toBe("needs_information"));
-  it("no prior therapy → confirmed", () => expect(status("no_prior_gene_therapy", ok)).toBe("confirmed"));
+  it("previous gene therapy → conflict", () => expect(status("no_prior_gt", { ...ok, priorGeneTherapy: "yes" })).toBe("conflict"));
+  it("unknown history → needs_information", () => expect(status("no_prior_gt", { ...ok, priorGeneTherapy: "unknown" })).toBe("needs_information"));
+  it("no prior therapy → confirmed", () => expect(status("no_prior_gt", ok)).toBe("confirmed"));
 });
 
 describe("clinical confirmation (cannot self-report)", () => {

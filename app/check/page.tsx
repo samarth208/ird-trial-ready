@@ -25,6 +25,17 @@ const CONDITIONS = [
   "Other / not sure",
 ];
 
+const GROUP_ORDER: TrialLabel[] = [
+  "requirements_appear_confirmed",
+  "more_information_needed",
+  "requirement_does_not_match",
+];
+const GROUP_TITLE: Record<TrialLabel, string> = {
+  requirements_appear_confirmed: "Appear consistent so far",
+  more_information_needed: "Need more information",
+  requirement_does_not_match: "Conflict with a listed requirement",
+};
+
 export default function CheckPage() {
   const [step, setStep] = useState(0);
   const [a, setA] = useState<PatientAnswers>({});
@@ -188,9 +199,40 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
         </div>
       )}
 
-      {evaluations.map(({ trial, evaluation }) => (
-        <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} />
-      ))}
+      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+        Demonstration dataset: one real trial ID (with illustrative eligibility) plus clearly-labeled
+        example trials, shown to demonstrate how matching works across many trials at once. Verified,
+        real trials replace these before launch.
+      </div>
+
+      <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
+        Across <b>{evaluations.length}</b> trials, based on what you entered:
+        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          {GROUP_ORDER.map((g) => {
+            const n = evaluations.filter((e) => e.evaluation.label === g).length;
+            return n ? (
+              <span key={g} className="text-slate-500">
+                <b className="text-slate-800">{n}</b> {GROUP_TITLE[g].toLowerCase()}
+              </span>
+            ) : null;
+          })}
+        </div>
+      </div>
+
+      {GROUP_ORDER.map((group) => {
+        const items = evaluations.filter((e) => e.evaluation.label === group);
+        if (!items.length) return null;
+        return (
+          <div key={group}>
+            <h3 className="mt-6 mb-1 text-sm font-bold text-slate-800">
+              {GROUP_TITLE[group]} · {items.length}
+            </h3>
+            {items.map(({ trial, evaluation }) => (
+              <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} />
+            ))}
+          </div>
+        );
+      })}
 
       <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
         This is not a determination of eligibility. Trial requirements change; always confirm the
@@ -222,6 +264,7 @@ function TrialCard({
   const [liveError, setLiveError] = useState(false);
 
   useEffect(() => {
+    if (!/^NCT\d{8}$/.test(trial.nctId)) return; // example trials have no live record
     let active = true;
     fetch(`/api/trials/${trial.nctId}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -244,9 +287,12 @@ function TrialCard({
           {LABEL_TEXT[evaluation.label]}
         </span>
       </div>
+      {trial.title && <p className="mt-1 text-sm font-medium text-slate-700">{trial.title}</p>}
 
       <div className="mt-2 text-xs text-slate-500">
-        {live ? (
+        {trial.example ? (
+          <span className="text-slate-400">Example trial (illustrative) — not a live record.</span>
+        ) : live ? (
           <span>
             <span className="font-semibold text-slate-700">{live.overallStatus.replace(/_/g, " ")}</span>
             {live.locations?.length ? ` · ${live.locations.length} site(s)` : ""}
@@ -258,6 +304,16 @@ function TrialCard({
           <span className="text-slate-400">Live status unavailable right now — see the official listing.</span>
         ) : (
           <span className="text-slate-400">Loading live status…</span>
+        )}
+        {trial.travelSupport && (
+          <span className="ml-2 text-slate-400">
+            ·{" "}
+            {trial.travelSupport === "described"
+              ? "Travel support described"
+              : trial.travelSupport === "contact_site"
+              ? "Contact site about travel/expenses"
+              : "No public info on travel support"}
+          </span>
         )}
       </div>
 

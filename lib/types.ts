@@ -61,9 +61,13 @@ export type TrialRequirement =
 
 export interface CuratedTrial {
   nctId: string;
+  title?: string;
   conditionGroup: "RP" | "IRD";
   geneSpecific: boolean;
   verified: boolean; // curated eligibility checked against the official record?
+  example?: boolean; // illustrative entry (no live record) used to demonstrate matching
+  // Travel/expense support — never a confident yes/no; only "described" when an official source states it.
+  travelSupport?: "described" | "contact_site" | "unknown";
   curation: CurationMetadata;
   sourceUrl: string;
   requirements: TrialRequirement[];

@@ -1,22 +1,20 @@
 // Core data model for IRD Trial Ready.
-// ClinicalTrials.gov owns *changing trial facts* (status, locations, contacts).
-// Our curated layer owns the *patient-friendly readiness logic* and source text.
-
-export type AgeBucket = "under18" | "a18_39" | "a40_64" | "a65plus";
+// ClinicalTrials.gov owns *changing trial facts* (status, locations, contacts) — fetched live.
+// Our curated layer owns the *patient-friendly readiness logic*, source text, and curation trail.
 
 export type GeneticResultType =
-  | "gene_identified" // a causative gene/variant was found
-  | "vus" // variant of uncertain significance
-  | "negative" // negative / inconclusive
-  | "unknown"; // patient does not know
+  | "gene_identified"
+  | "vus"
+  | "negative"
+  | "unknown";
 
 export type YesNoUnknown = "yes" | "no" | "unknown";
 
 // What the patient tells us. Nothing here is a clinical measurement.
 export interface PatientAnswers {
-  ageBucket?: AgeBucket;
-  country?: string;
-  location?: string; // ZIP or city (free text, v1)
+  age?: number; // exact age (validated 1–120), used deterministically
+  country?: string; // used for finding nearby sites (with live locations)
+  location?: string; // ZIP or city — used for finding nearby sites (with live locations)
   condition?: string;
 
   geneticTestingDone?: "yes" | "no" | "in_progress";
@@ -27,71 +25,76 @@ export interface PatientAnswers {
 
   priorGeneTherapy?: YesNoUnknown;
   priorRetinalSurgery?: YesNoUnknown;
-  willingToTravel?: "yes" | "no";
+}
+
+// ---- Curation trail (trust layer) ----
+
+export interface CurationMetadata {
+  checkedAt: string; // ISO date the eligibility was last checked against the official record
+  checkedBy: string;
+  clinicianReviewed: boolean;
+  clinicianReviewer?: string;
+  reviewDate?: string;
+  reviewNotes?: string;
+  nextReviewBy?: string; // ISO date
 }
 
 // ---- Curated trial requirement schema ----
 
 interface RequirementBase {
   id: string;
-  label: string; // patient-friendly label
+  label: string;
   sourceText: string; // exact wording supporting this rule
+  sourceSection: "inclusion" | "exclusion";
 }
 
 export type TrialRequirement =
-  | (RequirementBase & {
-      type: "age";
-      minimum?: number;
-      maximum?: number;
-      canSelfReport: true;
-    })
-  | (RequirementBase & {
-      type: "gene";
-      acceptedGenes: string[];
-      canSelfReport: true;
-    })
-  | (RequirementBase & {
-      type: "variant";
-      acceptedVariants: string[];
-      canSelfReport: true;
-    })
+  | (RequirementBase & { type: "age"; minimum?: number; maximum?: number; canSelfReport: true })
+  | (RequirementBase & { type: "gene"; acceptedGenes: string[]; canSelfReport: true })
+  | (RequirementBase & { type: "variant"; acceptedVariants: string[]; canSelfReport: true })
   | (RequirementBase & {
       type: "prior_treatment";
-      // if the patient has had any of these, it conflicts with eligibility
       excludedTreatments: Array<"gene_therapy" | "retinal_surgery">;
       canSelfReport: true;
     })
-  | (RequirementBase & {
-      // Something only a trial site / clinician can assess (imaging, cell viability, VA testing).
-      type: "clinical_confirmation";
-      canSelfReport: false;
-    });
+  | (RequirementBase & { type: "clinical_confirmation"; canSelfReport: false });
 
 export interface CuratedTrial {
   nctId: string;
   conditionGroup: "RP" | "IRD";
   geneSpecific: boolean;
-  curatedAt: string; // ISO date
-  reviewedBy?: string; // clinician/counselor who reviewed the curation (empty until reviewed)
-  verified: boolean; // has the curated eligibility been checked against the official record?
+  verified: boolean; // curated eligibility checked against the official record?
+  curation: CurationMetadata;
   sourceUrl: string;
   requirements: TrialRequirement[];
 }
 
+// ---- Live facts from the ClinicalTrials.gov API (never curated) ----
+
+export interface LiveTrialFacts {
+  nctId: string;
+  officialTitle: string;
+  overallStatus: string; // e.g. RECRUITING
+  sponsor: string;
+  phase: string;
+  lastUpdatedAt: string; // ISO date from the record
+  locations: Array<{ facility?: string; city?: string; state?: string; country?: string; status?: string }>;
+  sourceUrl: string;
+  fetchedAt: string;
+}
+
 // ---- Results ----
 
-export type RequirementStatus =
-  | "confirmed" // patient answer matches a clearly stated, self-reportable requirement
-  | "needs_information" // more info required (missing answer, or must be confirmed by trial site)
-  | "conflict"; // patient answer conflicts with a clearly stated requirement
+export type RequirementStatus = "confirmed" | "needs_information" | "conflict";
 
 export interface RequirementResult {
   requirementId: string;
   label: string;
   status: RequirementStatus;
-  siteConfirmationOnly: boolean; // true for clinical_confirmation rows
+  siteConfirmationOnly: boolean;
   explanation: string;
   sourceText: string;
+  sourceSection: "inclusion" | "exclusion";
 }
 
 export type TrialLabel =

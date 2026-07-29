@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { CURATED_TRIALS } from "@/data/trials";
 import { evaluateTrial, LABEL_TEXT } from "@/lib/matching";
 import type {
+  CuratedTrial,
+  LiveTrialFacts,
   PatientAnswers,
   RequirementResult,
   TrialEvaluation,
@@ -50,17 +52,21 @@ export default function CheckPage() {
 
       {step === 0 && (
         <Card title="About you" sub="No clinical measurements — just a few basics.">
-          <RadioRow
-            label="Age range"
-            value={a.ageBucket}
-            onChange={(v) => update("ageBucket", v as PatientAnswers["ageBucket"])}
-            options={[
-              ["under18", "Under 18"],
-              ["a18_39", "18–39"],
-              ["a40_64", "40–64"],
-              ["a65plus", "65+"],
-            ]}
-          />
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Age</label>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={a.age ?? ""}
+              onChange={(e) =>
+                update("age", e.target.value === "" ? undefined : Math.max(1, Math.min(120, Math.floor(Number(e.target.value)))))
+              }
+              placeholder="e.g. 34"
+              className="w-40 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            />
+            <p className="mt-1 text-xs text-slate-400">Exact age is used to check age limits precisely. Stored only in your browser.</p>
+          </div>
           <SelectRow
             label="Diagnosed condition"
             value={a.condition ?? ""}
@@ -71,6 +77,7 @@ export default function CheckPage() {
             <TextRow label="Country" value={a.country ?? ""} onChange={(v) => update("country", v)} placeholder="United States" />
             <TextRow label="ZIP or city" value={a.location ?? ""} onChange={(v) => update("location", v)} placeholder="e.g. 94043 or San Jose" />
           </div>
+          <p className="text-xs text-slate-400">Location is used to find and rank nearby trial sites once live locations are enabled (next milestone).</p>
           <Nav onNext={() => setStep(1)} />
         </Card>
       )}
@@ -135,12 +142,6 @@ export default function CheckPage() {
             onChange={(v) => update("priorRetinalSurgery", v as PatientAnswers["priorRetinalSurgery"])}
             options={[["no", "No"], ["yes", "Yes"], ["unknown", "Not sure"]]}
           />
-          <RadioRow
-            label="Willing to travel for a trial?"
-            value={a.willingToTravel}
-            onChange={(v) => update("willingToTravel", v as PatientAnswers["willingToTravel"])}
-            options={[["yes", "Yes"], ["no", "No"]]}
-          />
           <Nav onBack={() => setStep(1)} onNext={goResults} nextLabel="See my readiness" />
         </Card>
       )}
@@ -187,7 +188,7 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
       )}
 
       {evaluations.map(({ trial, evaluation }) => (
-        <TrialCard key={trial.nctId} evaluation={evaluation} sourceUrl={trial.sourceUrl} verified={trial.verified} />
+        <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} />
       ))}
 
       <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
@@ -204,30 +205,60 @@ const LABEL_STYLE: Record<TrialLabel, string> = {
   requirement_does_not_match: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
-function TrialCard({
-  evaluation,
-  sourceUrl,
-  verified,
-}: {
-  evaluation: TrialEvaluation;
-  sourceUrl: string;
-  verified: boolean;
-}) {
+function TrialCard({ trial, evaluation }: { trial: CuratedTrial; evaluation: TrialEvaluation }) {
   const checklist = buildChecklist(evaluation.results);
+  const [live, setLive] = useState<LiveTrialFacts | null>(null);
+  const [liveError, setLiveError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/trials/${trial.nctId}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => active && setLive(d))
+      .catch(() => active && setLiveError(true));
+    return () => {
+      active = false;
+    };
+  }, [trial.nctId]);
+
+  const stale = Boolean(live?.lastUpdatedAt && live.lastUpdatedAt > trial.curation.checkedAt);
+
   return (
     <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <a href={sourceUrl} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline">
-          {evaluation.nctId}
+        <a href={trial.sourceUrl} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline">
+          {trial.nctId}
         </a>
         <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${LABEL_STYLE[evaluation.label]}`}>
           {LABEL_TEXT[evaluation.label]}
         </span>
       </div>
-      {!verified && (
+
+      <div className="mt-2 text-xs text-slate-500">
+        {live ? (
+          <span>
+            <span className="font-semibold text-slate-700">{live.overallStatus.replace(/_/g, " ")}</span>
+            {live.locations?.length ? ` · ${live.locations.length} site(s)` : ""}
+            {live.lastUpdatedAt ? ` · updated ${live.lastUpdatedAt}` : ""}
+            {" · "}
+            <span className="text-slate-400">live from ClinicalTrials.gov</span>
+          </span>
+        ) : liveError ? (
+          <span className="text-slate-400">Live status unavailable right now — see the official listing.</span>
+        ) : (
+          <span className="text-slate-400">Loading live status…</span>
+        )}
+      </div>
+
+      {stale && (
+        <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          This trial&rsquo;s official record changed on {live!.lastUpdatedAt}, after our eligibility was last checked
+          ({trial.curation.checkedAt}). The requirements below may be out of date — verify against the official listing.
+        </p>
+      )}
+      {!trial.verified && (
         <p className="mt-2 text-[11px] text-slate-400">
-          Curated eligibility is illustrative and pending clinician review — verify against the
-          official record.
+          Curated eligibility is illustrative and pending clinician review — verify against the official record.
         </p>
       )}
 

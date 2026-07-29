@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CURATED_TRIALS } from "@/data/trials";
 import { evaluateTrial, LABEL_TEXT } from "@/lib/matching";
+import { buildInquiryMessage } from "@/lib/inquiry";
 import type {
   CuratedTrial,
   LiveTrialFacts,
@@ -188,7 +189,7 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
       )}
 
       {evaluations.map(({ trial, evaluation }) => (
-        <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} />
+        <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} />
       ))}
 
       <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
@@ -205,8 +206,18 @@ const LABEL_STYLE: Record<TrialLabel, string> = {
   requirement_does_not_match: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
-function TrialCard({ trial, evaluation }: { trial: CuratedTrial; evaluation: TrialEvaluation }) {
+function TrialCard({
+  trial,
+  evaluation,
+  answers,
+}: {
+  trial: CuratedTrial;
+  evaluation: TrialEvaluation;
+  answers: PatientAnswers;
+}) {
   const checklist = buildChecklist(evaluation.results);
+  const inquiry = buildInquiryMessage(trial, answers, evaluation);
+  const [copied, setCopied] = useState(false);
   const [live, setLive] = useState<LiveTrialFacts | null>(null);
   const [liveError, setLiveError] = useState(false);
 
@@ -278,6 +289,55 @@ function TrialCard({ trial, evaluation }: { trial: CuratedTrial; evaluation: Tri
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="mt-5 border-t border-slate-100 pt-4">
+        <h4 className="text-sm font-bold text-slate-900">Contact the trial site</h4>
+        {live?.locations && live.locations.length > 0 ? (
+          <ul className="mt-2 space-y-1 text-sm text-slate-600">
+            {live.locations.slice(0, 3).map((loc, i) => (
+              <li key={i}>
+                {[loc.facility, loc.city, loc.state, loc.country].filter(Boolean).join(", ")}
+                {loc.status ? <span className="text-slate-400"> · {loc.status.replace(/_/g, " ")}</span> : null}
+              </li>
+            ))}
+            {live.locations.length > 3 && (
+              <li className="text-slate-400">+ {live.locations.length - 3} more site(s) on the official listing</li>
+            )}
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-slate-500">See the official listing for current recruiting sites and contacts.</p>
+        )}
+
+        <p className="mt-3 text-xs font-semibold text-slate-600">
+          Draft inquiry message — review it and add your name before sending:
+        </p>
+        <textarea
+          readOnly
+          value={inquiry}
+          rows={10}
+          className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 font-mono"
+        />
+        <div className="mt-2 flex flex-wrap gap-2 print:hidden">
+          <button
+            onClick={() => {
+              navigator.clipboard?.writeText(inquiry);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-600"
+          >
+            {copied ? "Copied ✓" : "Copy message"}
+          </button>
+          <a
+            href={trial.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Open official listing &amp; contacts →
+          </a>
+        </div>
       </div>
     </div>
   );

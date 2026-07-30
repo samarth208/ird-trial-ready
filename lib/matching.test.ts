@@ -1,20 +1,37 @@
 import { describe, it, expect } from "vitest";
 import { evaluateTrial } from "@/lib/matching";
-import { CURATED_TRIALS } from "@/data/trials";
-import type { PatientAnswers, RequirementStatus, TrialLabel } from "@/lib/types";
+import type { CuratedTrial, PatientAnswers, RequirementStatus, TrialLabel } from "@/lib/types";
 
-const trial = CURATED_TRIALS.find((t) => t.nctId === "NCT06952842")!;
+// A synthetic trial that exercises every requirement type — unit tests should not depend on
+// the (changing) real curated dataset.
+const fixture: CuratedTrial = {
+  nctId: "TEST-0001",
+  conditionGroup: "RP",
+  geneSpecific: true,
+  verified: false,
+  example: true,
+  sourceUrl: "",
+  curation: { checkedAt: "2026-07-28", checkedBy: "test", clinicianReviewed: false },
+  requirements: [
+    { id: "gene", type: "gene", label: "RHO", acceptedGenes: ["RHO"], canSelfReport: true, sourceSection: "inclusion", sourceText: "" },
+    { id: "variant", type: "variant", label: "c.403C>T", acceptedVariants: ["c.403C>T", "p.R135W", "R135W"], canSelfReport: true, sourceSection: "inclusion", sourceText: "" },
+    { id: "sex", type: "sex", label: "Male", requiredSex: "male", canSelfReport: true, sourceSection: "inclusion", sourceText: "" },
+    { id: "age", type: "age", label: "18–75", minimum: 18, maximum: 75, canSelfReport: true, sourceSection: "inclusion", sourceText: "" },
+    { id: "viable_cells", type: "clinical_confirmation", label: "Viable cells", canSelfReport: false, sourceSection: "inclusion", sourceText: "" },
+    { id: "no_prior_gt", type: "prior_treatment", label: "No prior gene therapy", excludedTreatments: ["gene_therapy"], canSelfReport: true, sourceSection: "exclusion", sourceText: "" },
+  ],
+};
 
 function status(id: string, a: PatientAnswers): RequirementStatus | undefined {
-  return evaluateTrial(trial, a).results.find((r) => r.requirementId === id)?.status;
+  return evaluateTrial(fixture, a).results.find((r) => r.requirementId === id)?.status;
 }
 function label(a: PatientAnswers): TrialLabel {
-  return evaluateTrial(trial, a).label;
+  return evaluateTrial(fixture, a).label;
 }
 
-// A fully-matching baseline we can vary one field at a time.
 const ok: PatientAnswers = {
   age: 30,
+  sex: "male",
   geneticTestingDone: "yes",
   resultType: "gene_identified",
   gene: "RHO",
@@ -27,9 +44,8 @@ describe("gene requirement", () => {
     expect(status("gene", ok)).toBe("confirmed");
     expect(status("variant", ok)).toBe("confirmed");
   });
-  it("gene aliases/case are normalized", () => {
+  it("normalizes case/whitespace and known aliases", () => {
     expect(status("gene", { ...ok, gene: "  rho " })).toBe("confirmed");
-    expect(status("variant", { ...ok, variant: "p.R135W" })).toBe("confirmed");
   });
   it("matching gene but missing variant → variant needs_information", () => {
     expect(status("variant", { ...ok, variant: undefined })).toBe("needs_information");
@@ -37,48 +53,55 @@ describe("gene requirement", () => {
   it("different gene → conflict", () => {
     expect(status("gene", { ...ok, gene: "USH2A" })).toBe("conflict");
   });
-  it("variant of uncertain significance → gene needs_information", () => {
+  it("VUS → gene needs_information", () => {
     expect(status("gene", { ...ok, resultType: "vus" })).toBe("needs_information");
   });
-  it("no genetic testing → gene needs_information", () => {
+  it("no testing / in progress / negative → gene needs_information", () => {
     expect(status("gene", { ...ok, geneticTestingDone: "no", resultType: undefined, gene: undefined })).toBe("needs_information");
-  });
-  it("testing in progress → gene needs_information", () => {
     expect(status("gene", { ...ok, geneticTestingDone: "in_progress", resultType: undefined })).toBe("needs_information");
-  });
-  it("negative / inconclusive → gene needs_information", () => {
     expect(status("gene", { ...ok, resultType: "negative", gene: undefined })).toBe("needs_information");
   });
 });
 
+describe("sex requirement", () => {
+  it("male → confirmed, female → conflict, missing → needs_information", () => {
+    expect(status("sex", ok)).toBe("confirmed");
+    expect(status("sex", { ...ok, sex: "female" })).toBe("conflict");
+    expect(status("sex", { ...ok, sex: undefined })).toBe("needs_information");
+  });
+});
+
 describe("age requirement", () => {
-  it("inside range → confirmed", () => expect(status("age", { ...ok, age: 40 })).toBe("confirmed"));
-  it("below range → conflict", () => expect(status("age", { ...ok, age: 12 })).toBe("conflict"));
-  it("above range → conflict", () => expect(status("age", { ...ok, age: 90 })).toBe("conflict"));
-  it("missing age → needs_information", () => expect(status("age", { ...ok, age: undefined })).toBe("needs_information"));
+  it("inside / below / above / missing", () => {
+    expect(status("age", { ...ok, age: 40 })).toBe("confirmed");
+    expect(status("age", { ...ok, age: 12 })).toBe("conflict");
+    expect(status("age", { ...ok, age: 90 })).toBe("conflict");
+    expect(status("age", { ...ok, age: undefined })).toBe("needs_information");
+  });
 });
 
 describe("prior-treatment exclusion", () => {
-  it("previous gene therapy → conflict", () => expect(status("no_prior_gt", { ...ok, priorGeneTherapy: "yes" })).toBe("conflict"));
-  it("unknown history → needs_information", () => expect(status("no_prior_gt", { ...ok, priorGeneTherapy: "unknown" })).toBe("needs_information"));
-  it("no prior therapy → confirmed", () => expect(status("no_prior_gt", ok)).toBe("confirmed"));
+  it("yes → conflict, unknown → needs_information, no → confirmed", () => {
+    expect(status("no_prior_gt", { ...ok, priorGeneTherapy: "yes" })).toBe("conflict");
+    expect(status("no_prior_gt", { ...ok, priorGeneTherapy: "unknown" })).toBe("needs_information");
+    expect(status("no_prior_gt", ok)).toBe("confirmed");
+  });
 });
 
-describe("clinical confirmation (cannot self-report)", () => {
-  it("always needs_information regardless of answers", () => {
+describe("clinical confirmation", () => {
+  it("always needs_information + site-only", () => {
     expect(status("viable_cells", ok)).toBe("needs_information");
-    const row = evaluateTrial(trial, ok).results.find((r) => r.requirementId === "viable_cells")!;
+    const row = evaluateTrial(fixture, ok).results.find((r) => r.requirementId === "viable_cells")!;
     expect(row.siteConfirmationOnly).toBe(true);
   });
 });
 
-describe("overall trial label", () => {
+describe("overall label", () => {
   it("a conflict anywhere → requirement_does_not_match", () => {
+    expect(label({ ...ok, sex: "female" })).toBe("requirement_does_not_match");
     expect(label({ ...ok, gene: "USH2A" })).toBe("requirement_does_not_match");
-    expect(label({ ...ok, priorGeneTherapy: "yes" })).toBe("requirement_does_not_match");
   });
-  it("no conflict but missing info → more_information_needed", () => {
-    // viable_cells always needs site confirmation, so a fully-matching user still gets this
+  it("no conflict but a site item → more_information_needed", () => {
     expect(label(ok)).toBe("more_information_needed");
   });
 });

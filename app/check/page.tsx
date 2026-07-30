@@ -39,6 +39,10 @@ const GROUP_TITLE: Record<TrialLabel, string> = {
   requirement_does_not_match: "Likely not a fit",
 };
 
+function isRecruitingStatus(s?: string): boolean {
+  return (s ?? "").toUpperCase() === "RECRUITING";
+}
+
 export default function CheckPage() {
   const [step, setStep] = useState(0);
   const [a, setA] = useState<PatientAnswers>({});
@@ -201,6 +205,25 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
     };
   }, [answers.location]);
 
+  // Fetch live status for every real trial once, so we can demote non-recruiting studies.
+  const [liveMap, setLiveMap] = useState<Record<string, LiveTrialFacts | null>>({});
+  useEffect(() => {
+    CURATED_TRIALS.forEach((t) => {
+      if (t.example || !/^NCT\d{8}$/.test(t.nctId)) return;
+      fetch(`/api/trials/${t.nctId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setLiveMap((m) => ({ ...m, [t.nctId]: d })))
+        .catch(() => setLiveMap((m) => ({ ...m, [t.nctId]: null })));
+    });
+  }, []);
+
+  // A trial is demoted to "closed" only once we KNOW (live) it isn't recruiting.
+  const groupOf = (nctId: string, label: TrialLabel): TrialLabel | "closed" => {
+    const facts = liveMap[nctId];
+    if (facts && facts.overallStatus && !isRecruitingStatus(facts.overallStatus)) return "closed";
+    return label;
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -231,7 +254,7 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
       </div>
 
       {GROUP_ORDER.map((group) => {
-        const items = evaluations.filter((e) => e.evaluation.label === group);
+        const items = evaluations.filter((e) => groupOf(e.trial.nctId, e.evaluation.label) === group);
         if (!items.length) return null;
         return (
           <div key={group}>
@@ -239,11 +262,24 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
               {GROUP_TITLE[group]} · {items.length}
             </h3>
             {items.map(({ trial, evaluation }) => (
-              <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} userCoord={userCoord} />
+              <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} userCoord={userCoord} live={liveMap[trial.nctId]} />
             ))}
           </div>
         );
       })}
+
+      {(() => {
+        const closed = evaluations.filter((e) => groupOf(e.trial.nctId, e.evaluation.label) === "closed");
+        if (!closed.length) return null;
+        return (
+          <div>
+            <h3 className="mt-6 mb-1 text-sm font-bold text-slate-500">Not currently recruiting · {closed.length}</h3>
+            {closed.map(({ trial, evaluation }) => (
+              <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} userCoord={userCoord} live={liveMap[trial.nctId]} />
+            ))}
+          </div>
+        );
+      })()}
 
       <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
         This is not a determination of eligibility. Trial requirements change; always confirm the current
@@ -264,36 +300,25 @@ function TrialCard({
   evaluation,
   answers,
   userCoord,
+  live,
 }: {
   trial: CuratedTrial;
   evaluation: TrialEvaluation;
   answers: PatientAnswers;
   userCoord: Coord | null;
+  live: LiveTrialFacts | null | undefined; // undefined = loading, null = unavailable
 }) {
   const takeaway = trialTakeaway(trial, evaluation);
   const inquiry = buildInquiryMessage(trial, answers, evaluation);
   const [copied, setCopied] = useState(false);
   const [showInquiry, setShowInquiry] = useState(false);
   const [open, setOpen] = useState(false);
-  const [live, setLive] = useState<LiveTrialFacts | null>(null);
-  const [liveError, setLiveError] = useState(false);
-
-  useEffect(() => {
-    if (trial.example || !/^NCT\d{8}$/.test(trial.nctId)) return;
-    let active = true;
-    fetch(`/api/trials/${trial.nctId}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => active && setLive(d))
-      .catch(() => active && setLiveError(true));
-    return () => {
-      active = false;
-    };
-  }, [trial.nctId, trial.example]);
 
   const nearest = useMemo(
     () => (userCoord && live?.locations ? nearestSite(userCoord, live.locations) : null),
     [userCoord, live]
   );
+  const notRecruiting = Boolean(live && !isRecruitingStatus(live.overallStatus));
   const stale = Boolean(live?.lastUpdatedAt && live.lastUpdatedAt > trial.curation.checkedAt);
 
   const done = evaluation.results.filter((r) => r.status === "confirmed");
@@ -307,6 +332,7 @@ function TrialCard({
           <p className="mt-0.5 text-xs text-slate-500">
             {done.length} you can confirm · {todo.length} to sort out
             {nearest ? ` · nearest ${nearest.miles} mi` : ""}
+            {notRecruiting ? <span className="font-semibold text-rose-600"> · not recruiting</span> : null}
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-2">
@@ -322,9 +348,15 @@ function TrialCard({
       <p className="text-sm text-slate-700">{takeaway}</p>
 
       <div className="mt-2 text-xs text-slate-500">
-        {live ? (
+        {live === undefined ? (
+          <span className="text-slate-400">Loading live status…</span>
+        ) : live === null ? (
+          <span className="text-slate-400">Live status unavailable right now.</span>
+        ) : (
           <span>
-            <span className="font-semibold text-slate-700">{live.overallStatus.replace(/_/g, " ")}</span>
+            <span className={`font-semibold ${notRecruiting ? "text-rose-600" : "text-slate-700"}`}>
+              {live.overallStatus.replace(/_/g, " ")}
+            </span>
             {nearest
               ? ` · nearest site ${[nearest.location.city, nearest.location.state].filter(Boolean).join(", ")} — ${nearest.miles} mi`
               : live.locations?.length
@@ -332,10 +364,6 @@ function TrialCard({
               : ""}
             {live.lastUpdatedAt ? ` · updated ${live.lastUpdatedAt}` : ""}
           </span>
-        ) : liveError ? (
-          <span className="text-slate-400">Live status unavailable right now.</span>
-        ) : (
-          <span className="text-slate-400">Loading live status…</span>
         )}
         {trial.travelSupport && (
           <span className="ml-2 text-slate-400">
@@ -354,6 +382,12 @@ function TrialCard({
         {trial.curation.clinicianReviewed ? " (clinician-reviewed)" : " · not yet clinician-reviewed"} · site-level
         availability not yet verified
       </p>
+
+      {notRecruiting && (
+        <p className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+          This study is not currently recruiting ({live!.overallStatus.replace(/_/g, " ").toLowerCase()}) — shown for reference.
+        </p>
+      )}
 
       {stale && (
         <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800">

@@ -70,6 +70,10 @@ export interface CuratedTrial {
   example?: boolean; // illustrative entry (no live record) used to demonstrate matching
   // Travel/expense support — never a confident yes/no; only "described" when an official source states it.
   travelSupport?: "described" | "contact_site" | "unknown";
+  therapyType?: string; // e.g. "AAV gene therapy (subretinal injection)"
+  recordsNeeded?: string[]; // documents a site is likely to ask for
+  screeningSteps?: string[]; // likely sequence after you make contact
+  visitBurden?: string; // plain-language visit/travel burden summary
   curation: CurationMetadata;
   sourceUrl: string;
   requirements: TrialRequirement[];

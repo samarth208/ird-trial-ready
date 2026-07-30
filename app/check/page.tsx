@@ -349,6 +349,12 @@ function TrialCard({
         )}
       </div>
 
+      <p className="mt-1 text-[11px] text-slate-400">
+        Eligibility reviewed {trial.curation.checkedAt}
+        {trial.curation.clinicianReviewed ? " (clinician-reviewed)" : " · not yet clinician-reviewed"} · site-level
+        availability not yet verified
+      </p>
+
       {stale && (
         <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
           This trial&rsquo;s official record changed on {live!.lastUpdatedAt}, after our eligibility was last checked
@@ -429,6 +435,39 @@ function TrialCard({
         </div>
       )}
 
+      {/* Prepare to participate — records, screening sequence, burden */}
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs font-semibold text-brand-700">Prepare to participate — records, steps &amp; burden</summary>
+        <div className="mt-2 space-y-3">
+          {trial.therapyType && <p className="text-xs text-slate-500">Therapy: {trial.therapyType}</p>}
+          {trial.recordsNeeded && trial.recordsNeeded.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-slate-700">Records to gather</p>
+              <RecordsChecklist nctId={trial.nctId} records={trial.recordsNeeded} />
+            </div>
+          )}
+          {trial.screeningSteps && trial.screeningSteps.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-slate-700">Likely steps after you contact them</p>
+              <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-xs text-slate-600">
+                {trial.screeningSteps.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {trial.visitBurden && (
+            <div>
+              <p className="text-xs font-bold text-slate-700">Visit &amp; travel burden</p>
+              <p className="mt-1 text-xs text-slate-600">{trial.visitBurden}</p>
+            </div>
+          )}
+          <p className="text-[11px] text-slate-400">
+            These are general expectations for this type of trial, not confirmed for this specific study — verify with the site.
+          </p>
+        </div>
+      </details>
+
       {/* Exact criteria + sources, on demand */}
       <details className="mt-3">
         <summary className="cursor-pointer text-xs font-semibold text-brand-700">See exact criteria &amp; sources</summary>
@@ -446,6 +485,47 @@ function TrialCard({
       )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RecordsChecklist({ nctId, records }: { nctId: string; records: string[] }) {
+  const KEY = "ird_records_v1";
+  const [have, setHave] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    try {
+      const all = JSON.parse(localStorage.getItem(KEY) || "{}");
+      setHave(all[nctId] || {});
+    } catch {}
+  }, [nctId]);
+
+  function toggle(rec: string) {
+    setHave((prev) => {
+      const next = { ...prev, [rec]: !prev[rec] };
+      try {
+        const all = JSON.parse(localStorage.getItem(KEY) || "{}");
+        all[nctId] = next;
+        localStorage.setItem(KEY, JSON.stringify(all));
+      } catch {}
+      return next;
+    });
+  }
+
+  const haveCount = records.filter((r) => have[r]).length;
+  return (
+    <div className="mt-1">
+      <p className="text-[11px] text-slate-400">{haveCount} of {records.length} gathered</p>
+      <ul className="mt-1 space-y-1">
+        {records.map((rec) => (
+          <li key={rec}>
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-700">
+              <input type="checkbox" checked={!!have[rec]} onChange={() => toggle(rec)} className="mt-0.5" />
+              <span className={have[rec] ? "text-slate-400 line-through" : ""}>{rec}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

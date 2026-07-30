@@ -18,6 +18,32 @@ const transcribed = {
     "Criteria transcribed from the public ClinicalTrials.gov listing; verify against the official protocol before launch.",
 };
 
+// General expectations for IRD gene/RNA-therapy trials. These are typical, not trial-specific —
+// verify the exact records, sequence, and burden with each site.
+const commonExtras = {
+  recordsNeeded: [
+    "Genetic laboratory report (gene, variant, and pathogenicity classification)",
+    "Recent OCT (retinal imaging)",
+    "Visual field report",
+    "ERG results (if available)",
+    "Best-corrected visual acuity",
+    "Fundus autofluorescence (if available)",
+    "Ocular surgical / operative history",
+    "Current medication list",
+  ],
+  screeningSteps: [
+    "Introductory call with the study coordinator",
+    "Sign a records-release form",
+    "Coordinator reviews your genetic and eye records",
+    "Preliminary remote / phone pre-screen",
+    "In-person screening visit with imaging",
+    "Possible confirmatory genetic testing",
+    "Eligibility review by the study team",
+  ],
+  visitBurden:
+    "Typically several screening visits, a treatment visit (often a one-time subretinal or intravitreal procedure), and multiple follow-ups over 1–2 years — usually at a specialized center, so repeat travel is generally required. Confirm the exact schedule with the site.",
+};
+
 export const CURATED_TRIALS: CuratedTrial[] = [
   {
     nctId: "NCT03116113",
@@ -28,6 +54,8 @@ export const CURATED_TRIALS: CuratedTrial[] = [
     example: false,
     travelSupport: "unknown",
     sourceUrl: "https://clinicaltrials.gov/study/NCT03116113",
+    therapyType: "AAV gene therapy (subretinal injection)",
+    ...commonExtras,
     curation: transcribed,
     requirements: [
       { id: "gene", type: "gene", label: "Confirmed RPGR mutation (X-linked RP)", acceptedGenes: ["RPGR"], canSelfReport: true, sourceSection: "inclusion", sourceText: "Genetically confirmed diagnosis of X-linked retinitis pigmentosa with a mutation in the RPGR gene." },
@@ -47,6 +75,8 @@ export const CURATED_TRIALS: CuratedTrial[] = [
     example: false,
     travelSupport: "unknown",
     sourceUrl: "https://clinicaltrials.gov/study/NCT06388200",
+    therapyType: "Modifier gene therapy (subretinal injection)",
+    ...commonExtras,
     curation: transcribed,
     requirements: [
       { id: "age", type: "age", label: "Age 3 years or older", minimum: 3, canSelfReport: true, sourceSection: "inclusion", sourceText: "Participants must be 3 years of age or older." },
@@ -64,6 +94,8 @@ export const CURATED_TRIALS: CuratedTrial[] = [
     example: false,
     travelSupport: "unknown",
     sourceUrl: "https://clinicaltrials.gov/study/NCT05158296",
+    therapyType: "RNA antisense oligonucleotide (intravitreal injection)",
+    ...commonExtras,
     curation: transcribed,
     requirements: [
       { id: "gene", type: "gene", label: "USH2A mutation in exon 13", acceptedGenes: ["USH2A"], canSelfReport: true, sourceSection: "inclusion", sourceText: "Retinitis pigmentosa due to a mutation in exon 13 of the USH2A gene (confirmed on the genetic report)." },

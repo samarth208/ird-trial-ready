@@ -84,7 +84,7 @@ export interface LiveTrialFacts {
   sponsor: string;
   phase: string;
   lastUpdatedAt: string; // ISO date from the record
-  locations: Array<{ facility?: string; city?: string; state?: string; country?: string; status?: string }>;
+  locations: Array<{ facility?: string; city?: string; state?: string; country?: string; status?: string; lat?: number; lon?: number }>;
   sourceUrl: string;
   fetchedAt: string;
 }

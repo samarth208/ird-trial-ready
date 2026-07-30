@@ -6,6 +6,7 @@ import { evaluateTrial } from "@/lib/matching";
 import { buildInquiryMessage } from "@/lib/inquiry";
 import { shortLabel, trialTakeaway } from "@/lib/verdict";
 import { IRD_GENES } from "@/lib/genes";
+import { geocodeUsZip, isUsZip, nearestSite, type Coord } from "@/lib/geo";
 import type {
   CuratedTrial,
   LiveTrialFacts,
@@ -186,6 +187,20 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
     [evaluations]
   );
 
+  const [userCoord, setUserCoord] = useState<Coord | null>(null);
+  useEffect(() => {
+    const loc = (answers.location ?? "").trim();
+    if (!isUsZip(loc)) {
+      setUserCoord(null);
+      return;
+    }
+    let active = true;
+    geocodeUsZip(loc).then((c) => active && setUserCoord(c));
+    return () => {
+      active = false;
+    };
+  }, [answers.location]);
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -210,8 +225,8 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
       </p>
 
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-        Demonstration dataset: these are illustrative example trials used to show how the shortlist works.
-        Real, verified trials replace them before launch.
+        These are real trials, with eligibility transcribed from ClinicalTrials.gov and pending final
+        verification. Always confirm the current criteria with the official listing and your care team.
       </div>
 
       {GROUP_ORDER.map((group) => {
@@ -223,7 +238,7 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
               {GROUP_TITLE[group]} · {items.length}
             </h3>
             {items.map(({ trial, evaluation }) => (
-              <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} />
+              <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} userCoord={userCoord} />
             ))}
           </div>
         );
@@ -247,13 +262,14 @@ function TrialCard({
   trial,
   evaluation,
   answers,
+  userCoord,
 }: {
   trial: CuratedTrial;
   evaluation: TrialEvaluation;
   answers: PatientAnswers;
+  userCoord: Coord | null;
 }) {
   const takeaway = trialTakeaway(trial, evaluation);
-  const checklist = buildChecklist(evaluation.results);
   const inquiry = buildInquiryMessage(trial, answers, evaluation);
   const [copied, setCopied] = useState(false);
   const [showInquiry, setShowInquiry] = useState(false);
@@ -272,33 +288,38 @@ function TrialCard({
     };
   }, [trial.nctId, trial.example]);
 
+  const nearest = useMemo(
+    () => (userCoord && live?.locations ? nearestSite(userCoord, live.locations) : null),
+    [userCoord, live]
+  );
   const stale = Boolean(live?.lastUpdatedAt && live.lastUpdatedAt > trial.curation.checkedAt);
+
+  const done = evaluation.results.filter((r) => r.status === "confirmed");
+  const todo = evaluation.results.filter((r) => r.status !== "confirmed");
 
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           {trial.title && <p className="font-semibold text-slate-900">{trial.title}</p>}
-          <p className="text-xs text-slate-400">
-            {trial.nctId}
-            {trial.example ? " · example (illustrative)" : ""}
-          </p>
+          <p className="text-xs text-slate-400">{trial.nctId}</p>
         </div>
         <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${LABEL_STYLE[evaluation.label]}`}>
           {shortLabel(evaluation.label)}
         </span>
       </div>
 
-      {/* The plain-English takeaway — the answer, up front. */}
       <p className="mt-2 text-sm text-slate-700">{takeaway}</p>
 
       <div className="mt-2 text-xs text-slate-500">
-        {trial.example ? (
-          <span className="text-slate-400">Example trial (illustrative) — not a live record.</span>
-        ) : live ? (
+        {live ? (
           <span>
             <span className="font-semibold text-slate-700">{live.overallStatus.replace(/_/g, " ")}</span>
-            {live.locations?.length ? ` · ${live.locations.length} site(s)` : ""}
+            {nearest
+              ? ` · nearest site ${[nearest.location.city, nearest.location.state].filter(Boolean).join(", ")} — ${nearest.miles} mi`
+              : live.locations?.length
+              ? ` · ${live.locations.length} site(s)`
+              : ""}
             {live.lastUpdatedAt ? ` · updated ${live.lastUpdatedAt}` : ""}
           </span>
         ) : liveError ? (
@@ -325,6 +346,40 @@ function TrialCard({
         </p>
       )}
 
+      {/* What's stopping you — the answer, up front */}
+      <div className="mt-3">
+        <p className="text-xs font-bold text-slate-700">What you still need</p>
+        {todo.length === 0 ? (
+          <p className="mt-1 text-sm text-emerald-700">Nothing left that you can self-report — the next step is to contact the site.</p>
+        ) : (
+          <ul className="mt-1.5 space-y-1.5">
+            {todo.map((r) => {
+              const conflict = r.status === "conflict";
+              const site = r.siteConfirmationOnly;
+              const icon = conflict ? "✕" : site ? "○" : "☐";
+              const iconCls = conflict ? "text-rose-500" : site ? "text-sky-500" : "text-amber-500";
+              const action = conflict
+                ? "may not match — double-check the current criteria with the site"
+                : site
+                ? "the trial site will check this"
+                : r.explanation;
+              return (
+                <li key={r.requirementId} className="flex gap-2 text-sm">
+                  <span className={`mt-0.5 ${iconCls}`}>{icon}</span>
+                  <span>
+                    <span className="font-medium text-slate-800">{r.label}</span>{" "}
+                    <span className="text-slate-500">— {action}</span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {done.length > 0 && (
+          <p className="mt-2 text-xs text-emerald-700">✓ Already confirmed: {done.map((d) => d.label).join(" · ")}</p>
+        )}
+      </div>
+
       {/* Actions */}
       <div className="mt-3 flex flex-wrap gap-2 print:hidden">
         <button
@@ -339,7 +394,7 @@ function TrialCard({
           rel="noreferrer"
           className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
-          Search on ClinicalTrials.gov →
+          Open on ClinicalTrials.gov →
         </a>
       </div>
       {showInquiry && (
@@ -364,32 +419,19 @@ function TrialCard({
         </div>
       )}
 
-      {/* Detail on demand */}
+      {/* Exact criteria + sources, on demand */}
       <details className="mt-3">
-        <summary className="cursor-pointer text-xs font-semibold text-brand-700">See how each requirement matched</summary>
+        <summary className="cursor-pointer text-xs font-semibold text-brand-700">See exact criteria &amp; sources</summary>
         <div className="mt-2 divide-y divide-slate-100">
           {evaluation.results.map((r) => (
             <ResultRow key={r.requirementId} r={r} />
           ))}
         </div>
-        {checklist.length > 0 && (
-          <div className="mt-3">
-            <p className="text-xs font-bold text-slate-700">What to confirm before contacting them</p>
-            <ul className="mt-1 space-y-1">
-              {checklist.map((c, i) => (
-                <li key={i} className="flex gap-2 text-xs text-slate-600">
-                  <span className="mt-0.5 text-brand-500">☐</span>
-                  <span>{c}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </details>
 
       {!trial.verified && (
         <p className="mt-2 text-[11px] text-slate-400">
-          Eligibility here is illustrative and pending verification against the official record.
+          Eligibility here is transcribed from the public listing and pending verification against the official record.
         </p>
       )}
     </div>
@@ -426,17 +468,6 @@ function StatusPill({ r }: { r: RequirementResult }) {
     text = "Trial site checks this";
   }
   return <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>{text}</span>;
-}
-
-function buildChecklist(results: RequirementResult[]): string[] {
-  const items: string[] = [];
-  for (const r of results) {
-    if (r.siteConfirmationOnly) items.push(`Ask the site whether you meet: “${r.label}.”`);
-    else if (r.status === "needs_information") items.push(r.explanation);
-    else if (r.status === "conflict") items.push(`Double-check the current criteria on “${r.label}” with the site.`);
-  }
-  items.push("Request a complete copy of your genetic laboratory report.");
-  return items;
 }
 
 /* ---------------- Small UI helpers ---------------- */

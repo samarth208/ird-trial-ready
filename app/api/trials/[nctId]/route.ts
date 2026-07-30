@@ -40,12 +40,14 @@ export async function GET(
         statusM.lastUpdatePostDateStruct?.date ??
         statusM.statusVerifiedDate ??
         "",
-      locations: (contactsM.locations ?? []).slice(0, 25).map((l: any) => ({
+      locations: (contactsM.locations ?? []).slice(0, 40).map((l: any) => ({
         facility: l.facility,
         city: l.city,
         state: l.state,
         country: l.country,
         status: l.status,
+        lat: typeof l.geoPoint?.lat === "number" ? l.geoPoint.lat : undefined,
+        lon: typeof l.geoPoint?.lon === "number" ? l.geoPoint.lon : undefined,
       })),
       sourceUrl: `https://clinicaltrials.gov/study/${nctId}`,
       fetchedAt: new Date().toISOString(),

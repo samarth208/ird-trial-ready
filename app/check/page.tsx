@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CURATED_TRIALS } from "@/data/trials";
-import { evaluateTrial, LABEL_TEXT } from "@/lib/matching";
+import { evaluateTrial } from "@/lib/matching";
 import { buildInquiryMessage } from "@/lib/inquiry";
+import { shortLabel, trialTakeaway } from "@/lib/verdict";
+import { IRD_GENES } from "@/lib/genes";
 import type {
   CuratedTrial,
   LiveTrialFacts,
@@ -31,9 +33,9 @@ const GROUP_ORDER: TrialLabel[] = [
   "requirement_does_not_match",
 ];
 const GROUP_TITLE: Record<TrialLabel, string> = {
-  requirements_appear_confirmed: "Appear consistent so far",
-  more_information_needed: "Need more information",
-  requirement_does_not_match: "Conflict with a listed requirement",
+  requirements_appear_confirmed: "Worth pursuing",
+  more_information_needed: "Might fit — needs more info",
+  requirement_does_not_match: "Likely not a fit",
 };
 
 export default function CheckPage() {
@@ -77,14 +79,9 @@ export default function CheckPage() {
               placeholder="e.g. 34"
               className="w-40 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
-            <p className="mt-1 text-xs text-slate-400">Exact age is used to check age limits precisely. Stored only in your browser.</p>
+            <p className="mt-1 text-xs text-slate-400">Exact age checks age limits precisely. Stored only in your browser.</p>
           </div>
-          <SelectRow
-            label="Diagnosed condition"
-            value={a.condition ?? ""}
-            onChange={(v) => update("condition", v)}
-            options={CONDITIONS}
-          />
+          <SelectRow label="Diagnosed condition" value={a.condition ?? ""} onChange={(v) => update("condition", v)} options={CONDITIONS} />
           <div className="grid sm:grid-cols-2 gap-4">
             <TextRow label="Country" value={a.country ?? ""} onChange={(v) => update("country", v)} placeholder="United States" />
             <TextRow label="ZIP or city" value={a.location ?? ""} onChange={(v) => update("location", v)} placeholder="e.g. 94043 or San Jose" />
@@ -95,16 +92,12 @@ export default function CheckPage() {
       )}
 
       {step === 1 && (
-        <Card title="Genetic testing" sub="Gene-specific trials depend on this. Answer only what you know.">
+        <Card title="Genetic testing" sub="This is the single biggest factor. Your gene decides which trials even apply.">
           <RadioRow
             label="Have you completed genetic testing?"
             value={a.geneticTestingDone}
             onChange={(v) => update("geneticTestingDone", v as PatientAnswers["geneticTestingDone"])}
-            options={[
-              ["yes", "Yes"],
-              ["no", "No"],
-              ["in_progress", "In progress"],
-            ]}
+            options={[["yes", "Yes"], ["no", "No"], ["in_progress", "In progress"]]}
           />
           {a.geneticTestingDone === "yes" && (
             <>
@@ -121,7 +114,22 @@ export default function CheckPage() {
               />
               {a.resultType === "gene_identified" && (
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <TextRow label="Gene (if known)" value={a.gene ?? ""} onChange={(v) => update("gene", v)} placeholder="e.g. RHO" />
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">Gene</label>
+                    <input
+                      list="ird-genes"
+                      value={a.gene ?? ""}
+                      onChange={(e) => update("gene", e.target.value)}
+                      placeholder="Start typing, e.g. RPGR"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                    />
+                    <datalist id="ird-genes">
+                      {IRD_GENES.map((g) => (
+                        <option key={g} value={g} />
+                      ))}
+                    </datalist>
+                    <p className="mt-1 text-xs text-slate-400">From your lab report. Common IRD genes will autocomplete.</p>
+                  </div>
                   <TextRow label="Specific variant (optional)" value={a.variant ?? ""} onChange={(v) => update("variant", v)} placeholder="e.g. c.403C>T" />
                 </div>
               )}
@@ -129,10 +137,7 @@ export default function CheckPage() {
                 label="Do you have a copy of the laboratory report?"
                 value={a.hasLabReport === undefined ? undefined : a.hasLabReport ? "yes" : "no"}
                 onChange={(v) => update("hasLabReport", v === "yes")}
-                options={[
-                  ["yes", "Yes"],
-                  ["no", "No"],
-                ]}
+                options={[["yes", "Yes"], ["no", "No"]]}
               />
             </>
           )}
@@ -154,7 +159,7 @@ export default function CheckPage() {
             onChange={(v) => update("priorRetinalSurgery", v as PatientAnswers["priorRetinalSurgery"])}
             options={[["no", "No"], ["yes", "Yes"], ["unknown", "Not sure"]]}
           />
-          <Nav onBack={() => setStep(1)} onNext={goResults} nextLabel="See my readiness" />
+          <Nav onBack={() => setStep(1)} onNext={goResults} nextLabel="See my shortlist" />
         </Card>
       )}
 
@@ -170,16 +175,15 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
     () => CURATED_TRIALS.map((t) => ({ trial: t, evaluation: evaluateTrial(t, answers) })),
     [answers]
   );
-
-  const noConfirmedGene =
-    answers.geneticTestingDone !== "yes" ||
-    answers.resultType !== "gene_identified" ||
-    !answers.gene;
+  const counts = useMemo(
+    () => GROUP_ORDER.map((g) => ({ g, n: evaluations.filter((e) => e.evaluation.label === g).length })),
+    [evaluations]
+  );
 
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-900">Your readiness</h2>
+        <h2 className="text-xl font-bold text-slate-900">Your shortlist</h2>
         <div className="flex gap-2 print:hidden">
           <button onClick={onBack} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Edit answers
@@ -190,33 +194,18 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
         </div>
       </div>
 
-      {noConfirmedGene && (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
-          <strong>You don&rsquo;t have a confirmed gene entered.</strong> Trials that require a
-          specific gene will show <em>&ldquo;more information needed&rdquo;</em> until you have a
-          confirmed molecular diagnosis. Ask your care team whether genetic testing, reanalysis, or
-          broader testing is appropriate — and look for gene-agnostic studies.
-        </div>
-      )}
+      <p className="mt-2 text-sm text-slate-600">
+        Based on what you entered, here's how {evaluations.length} trials line up —{" "}
+        {counts
+          .filter((c) => c.n > 0)
+          .map((c) => `${c.n} ${GROUP_TITLE[c.g].toLowerCase()}`)
+          .join(", ")}
+        .
+      </p>
 
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-        Demonstration dataset: one real trial ID (with illustrative eligibility) plus clearly-labeled
-        example trials, shown to demonstrate how matching works across many trials at once. Verified,
-        real trials replace these before launch.
-      </div>
-
-      <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
-        Across <b>{evaluations.length}</b> trials, based on what you entered:
-        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          {GROUP_ORDER.map((g) => {
-            const n = evaluations.filter((e) => e.evaluation.label === g).length;
-            return n ? (
-              <span key={g} className="text-slate-500">
-                <b className="text-slate-800">{n}</b> {GROUP_TITLE[g].toLowerCase()}
-              </span>
-            ) : null;
-          })}
-        </div>
+        Demonstration dataset: these are illustrative example trials used to show how the shortlist works.
+        Real, verified trials replace them before launch.
       </div>
 
       {GROUP_ORDER.map((group) => {
@@ -235,8 +224,8 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
       })}
 
       <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-        This is not a determination of eligibility. Trial requirements change; always confirm the
-        current criteria with the official trial site and your care team before acting.
+        This is not a determination of eligibility. Trial requirements change; always confirm the current
+        criteria with the official trial site and your care team before acting.
       </div>
     </div>
   );
@@ -257,14 +246,16 @@ function TrialCard({
   evaluation: TrialEvaluation;
   answers: PatientAnswers;
 }) {
+  const takeaway = trialTakeaway(trial, evaluation);
   const checklist = buildChecklist(evaluation.results);
   const inquiry = buildInquiryMessage(trial, answers, evaluation);
   const [copied, setCopied] = useState(false);
+  const [showInquiry, setShowInquiry] = useState(false);
   const [live, setLive] = useState<LiveTrialFacts | null>(null);
   const [liveError, setLiveError] = useState(false);
 
   useEffect(() => {
-    if (!/^NCT\d{8}$/.test(trial.nctId)) return; // example trials have no live record
+    if (trial.example || !/^NCT\d{8}$/.test(trial.nctId)) return;
     let active = true;
     fetch(`/api/trials/${trial.nctId}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -273,21 +264,27 @@ function TrialCard({
     return () => {
       active = false;
     };
-  }, [trial.nctId]);
+  }, [trial.nctId, trial.example]);
 
   const stale = Boolean(live?.lastUpdatedAt && live.lastUpdatedAt > trial.curation.checkedAt);
 
   return (
-    <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <a href={trial.sourceUrl} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline">
-          {trial.nctId}
-        </a>
-        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${LABEL_STYLE[evaluation.label]}`}>
-          {LABEL_TEXT[evaluation.label]}
+    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          {trial.title && <p className="font-semibold text-slate-900">{trial.title}</p>}
+          <p className="text-xs text-slate-400">
+            {trial.nctId}
+            {trial.example ? " · example (illustrative)" : ""}
+          </p>
+        </div>
+        <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${LABEL_STYLE[evaluation.label]}`}>
+          {shortLabel(evaluation.label)}
         </span>
       </div>
-      {trial.title && <p className="mt-1 text-sm font-medium text-slate-700">{trial.title}</p>}
+
+      {/* The plain-English takeaway — the answer, up front. */}
+      <p className="mt-2 text-sm text-slate-700">{takeaway}</p>
 
       <div className="mt-2 text-xs text-slate-500">
         {trial.example ? (
@@ -297,11 +294,9 @@ function TrialCard({
             <span className="font-semibold text-slate-700">{live.overallStatus.replace(/_/g, " ")}</span>
             {live.locations?.length ? ` · ${live.locations.length} site(s)` : ""}
             {live.lastUpdatedAt ? ` · updated ${live.lastUpdatedAt}` : ""}
-            {" · "}
-            <span className="text-slate-400">live from ClinicalTrials.gov</span>
           </span>
         ) : liveError ? (
-          <span className="text-slate-400">Live status unavailable right now — see the official listing.</span>
+          <span className="text-slate-400">Live status unavailable right now.</span>
         ) : (
           <span className="text-slate-400">Loading live status…</span>
         )}
@@ -320,95 +315,91 @@ function TrialCard({
       {stale && (
         <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
           This trial&rsquo;s official record changed on {live!.lastUpdatedAt}, after our eligibility was last checked
-          ({trial.curation.checkedAt}). The requirements below may be out of date — verify against the official listing.
-        </p>
-      )}
-      {!trial.verified && (
-        <p className="mt-2 text-[11px] text-slate-400">
-          Curated eligibility is illustrative and pending clinician review — verify against the official record.
+          ({trial.curation.checkedAt}). The details below may be out of date.
         </p>
       )}
 
-      <div className="mt-4 divide-y divide-slate-100">
-        {evaluation.results.map((r) => (
-          <ResultRow key={r.requirementId} r={r} />
-        ))}
+      {/* Actions */}
+      <div className="mt-3 flex flex-wrap gap-2 print:hidden">
+        <button
+          onClick={() => setShowInquiry((s) => !s)}
+          className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-600"
+        >
+          {showInquiry ? "Hide draft email" : "Draft an email to the site"}
+        </button>
+        <a
+          href={trial.sourceUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Search on ClinicalTrials.gov →
+        </a>
       </div>
-
-      <div className="mt-5">
-        <h4 className="text-sm font-bold text-slate-900">Before you contact this trial site</h4>
-        <ul className="mt-2 space-y-1.5">
-          {checklist.map((c, i) => (
-            <li key={i} className="flex gap-2 text-sm text-slate-700">
-              <span className="mt-0.5 text-brand-500">☐</span>
-              <span>{c}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="mt-5 border-t border-slate-100 pt-4">
-        <h4 className="text-sm font-bold text-slate-900">Contact the trial site</h4>
-        {live?.locations && live.locations.length > 0 ? (
-          <ul className="mt-2 space-y-1 text-sm text-slate-600">
-            {live.locations.slice(0, 3).map((loc, i) => (
-              <li key={i}>
-                {[loc.facility, loc.city, loc.state, loc.country].filter(Boolean).join(", ")}
-                {loc.status ? <span className="text-slate-400"> · {loc.status.replace(/_/g, " ")}</span> : null}
-              </li>
-            ))}
-            {live.locations.length > 3 && (
-              <li className="text-slate-400">+ {live.locations.length - 3} more site(s) on the official listing</li>
-            )}
-          </ul>
-        ) : (
-          <p className="mt-1 text-sm text-slate-500">See the official listing for current recruiting sites and contacts.</p>
-        )}
-
-        <p className="mt-3 text-xs font-semibold text-slate-600">
-          Draft inquiry message — review it and add your name before sending:
-        </p>
-        <textarea
-          readOnly
-          value={inquiry}
-          rows={10}
-          className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 font-mono"
-        />
-        <div className="mt-2 flex flex-wrap gap-2 print:hidden">
+      {showInquiry && (
+        <div className="mt-2">
+          <p className="mb-1 text-xs text-slate-500">Review it and add your name before sending:</p>
+          <textarea
+            readOnly
+            value={inquiry}
+            rows={10}
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-mono text-slate-700"
+          />
           <button
             onClick={() => {
               navigator.clipboard?.writeText(inquiry);
               setCopied(true);
               setTimeout(() => setCopied(false), 1500);
             }}
-            className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-600"
+            className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             {copied ? "Copied ✓" : "Copy message"}
           </button>
-          <a
-            href={trial.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Open official listing &amp; contacts →
-          </a>
         </div>
-      </div>
+      )}
+
+      {/* Detail on demand */}
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs font-semibold text-brand-700">See how each requirement matched</summary>
+        <div className="mt-2 divide-y divide-slate-100">
+          {evaluation.results.map((r) => (
+            <ResultRow key={r.requirementId} r={r} />
+          ))}
+        </div>
+        {checklist.length > 0 && (
+          <div className="mt-3">
+            <p className="text-xs font-bold text-slate-700">What to confirm before contacting them</p>
+            <ul className="mt-1 space-y-1">
+              {checklist.map((c, i) => (
+                <li key={i} className="flex gap-2 text-xs text-slate-600">
+                  <span className="mt-0.5 text-brand-500">☐</span>
+                  <span>{c}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </details>
+
+      {!trial.verified && (
+        <p className="mt-2 text-[11px] text-slate-400">
+          Eligibility here is illustrative and pending verification against the official record.
+        </p>
+      )}
     </div>
   );
 }
 
 function ResultRow({ r }: { r: RequirementResult }) {
   return (
-    <div className="py-3">
+    <div className="py-2.5">
       <div className="flex items-start justify-between gap-3">
-        <span className="text-sm font-medium text-slate-800">{r.label}</span>
+        <span className="text-sm text-slate-800">{r.label}</span>
         <StatusPill r={r} />
       </div>
       <p className="mt-1 text-xs text-slate-500">{r.explanation}</p>
       <details className="mt-1">
-        <summary className="cursor-pointer text-[11px] text-slate-400">Source text</summary>
+        <summary className="cursor-pointer text-[11px] text-slate-400">Source text ({r.sourceSection})</summary>
         <p className="mt-1 text-[11px] italic text-slate-500">&ldquo;{r.sourceText}&rdquo;</p>
       </details>
     </div>
@@ -416,20 +407,17 @@ function ResultRow({ r }: { r: RequirementResult }) {
 }
 
 function StatusPill({ r }: { r: RequirementResult }) {
-  let cls = "bg-slate-100 text-slate-600";
+  let cls = "bg-amber-50 text-amber-800";
   let text = "More information needed";
   if (r.status === "confirmed") {
     cls = "bg-emerald-50 text-emerald-700";
-    text = "Confirmed";
+    text = "Consistent";
   } else if (r.status === "conflict") {
     cls = "bg-rose-50 text-rose-700";
-    text = "Does not match";
+    text = "Doesn't match";
   } else if (r.siteConfirmationOnly) {
     cls = "bg-sky-50 text-sky-700";
-    text = "Confirm with trial site";
-  } else {
-    cls = "bg-amber-50 text-amber-800";
-    text = "More information needed";
+    text = "Trial site checks this";
   }
   return <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>{text}</span>;
 }
@@ -437,16 +425,11 @@ function StatusPill({ r }: { r: RequirementResult }) {
 function buildChecklist(results: RequirementResult[]): string[] {
   const items: string[] = [];
   for (const r of results) {
-    if (r.siteConfirmationOnly) {
-      items.push(`Ask the trial site whether you meet: “${r.label}.”`);
-    } else if (r.status === "needs_information") {
-      items.push(`Confirm with your care team: ${r.explanation}`);
-    } else if (r.status === "conflict") {
-      items.push(`Discuss the mismatch on “${r.label}” — confirm the trial's current criteria with the site.`);
-    }
+    if (r.siteConfirmationOnly) items.push(`Ask the site whether you meet: “${r.label}.”`);
+    else if (r.status === "needs_information") items.push(r.explanation);
+    else if (r.status === "conflict") items.push(`Double-check the current criteria on “${r.label}” with the site.`);
   }
   items.push("Request a complete copy of your genetic laboratory report.");
-  items.push("Contact the official trial site (linked above) to confirm current recruiting status and criteria.");
   return items;
 }
 
@@ -457,11 +440,7 @@ function Stepper({ step }: { step: number }) {
     <div className="mb-6 flex items-center gap-2 print:hidden">
       {STEPS.map((s, i) => (
         <div key={s} className="flex items-center gap-2">
-          <div
-            className={`grid h-6 w-6 place-items-center rounded-full text-xs font-bold ${
-              i <= step ? "bg-brand-500 text-white" : "bg-slate-200 text-slate-500"
-            }`}
-          >
+          <div className={`grid h-6 w-6 place-items-center rounded-full text-xs font-bold ${i <= step ? "bg-brand-500 text-white" : "bg-slate-200 text-slate-500"}`}>
             {i + 1}
           </div>
           <span className={`text-xs ${i === step ? "font-semibold text-slate-800" : "text-slate-400"}`}>{s}</span>

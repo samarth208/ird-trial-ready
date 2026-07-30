@@ -24,8 +24,9 @@ export const CURATED_TRIALS: CuratedTrial[] = [
     conditionGroup: "RP",
     geneSpecific: true,
     verified: false,
+    example: true,
     travelSupport: "contact_site",
-    sourceUrl: "https://clinicaltrials.gov/study/NCT06952842",
+    sourceUrl: "https://clinicaltrials.gov/search?cond=Retinitis+Pigmentosa&term=RHO",
     curation: curatedNow,
     requirements: [
       { id: "gene", type: "gene", label: "Confirmed mutation in the RHO gene", acceptedGenes: ["RHO"], canSelfReport: true, sourceSection: "inclusion", sourceText: "Participants must have a genetically confirmed mutation in the RHO (rhodopsin) gene." },

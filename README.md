@@ -1,60 +1,49 @@
 # IRD Trial Ready
 
-**Understand what an inherited-retinal-disease (IRD) clinical trial requires — and what information to confirm with your care team.**
+**Understand which inherited-retinal-disease (IRD) clinical trials are worth pursuing — and take the next step.**
 
-Trial listings show patients *what studies exist*. They rarely make clear *what information you need before contacting a site* — especially the genetic details. IRD Trial Ready turns official trial criteria into a plain-language **readiness checklist**.
+Trial listings are written for researchers: dense free-text eligibility you must read one page at a time. IRD Trial Ready takes a short, non-clinical intake and runs it **across a set of trials at once**, returning a plain-language shortlist — worth pursuing / might fit / likely not a fit — with a clear next step for each.
 
-It is **not** a diagnosis, does **not** interpret genetic results, and does **not** tell anyone they qualify.
+It is **not** a diagnosis, does **not** interpret genetic results, and never says "you qualify."
 
 ---
 
-## What v1 does (Milestone 1 — vertical slice)
+## What's implemented
 
-- A short 3-step intake (about you → genetic testing → trial history) — no clinical measurements requested.
-- For each curated trial, a **requirement-by-requirement result**, each labeled:
-  - **Confirmed** — your answer matches a clearly stated, self-reportable requirement
-  - **More information needed** — a missing answer, or something only a trial site can assess
-  - **Does not match** — your answer conflicts with a clearly stated requirement (cautious wording — *not* a medical eligibility decision)
-- A per-trial **care-team checklist** of exactly what to confirm, plus the source text behind every rule and a link to the official record.
-- Everything runs in the browser; answers are stored only in `localStorage`. No account, no database, no health data leaves the device.
+- **Intake** (browser-only, no account): exact age, condition, location, genetic-testing status, **gene (with autocomplete over common IRD genes)**, variant, prior treatments.
+- **Deterministic matching** (`lib/matching.ts`) — every requirement resolves to *consistent / needs info / trial-site-checks-this / doesn't match*. No AI, no "match %".
+- **Gene normalization** (`lib/genes.ts`) — case/whitespace + well-known aliases (e.g. RP3 → RPGR, ABCR → ABCA4).
+- **Plain-language verdict per trial** (`lib/verdict.ts`) — one sentence: what it means for you + your next step. Requirement-by-requirement detail is available on demand.
+- **Ranked shortlist** — trials grouped *Worth pursuing → Might fit → Likely not a fit*, with a count summary.
+- **Live ClinicalTrials.gov integration** (`app/api/trials/[nctId]/route.ts`) — serverless route that fetches, normalizes, and caches (1h) official status, sponsor, phase, last-updated, and locations for real NCT ids. The results page shows live status + a **stale-curation warning** when the official record changed after our eligibility was last checked.
+- **Action step** — a copyable draft inquiry email (built from the user's answers; never claims eligibility) + a ClinicalTrials.gov search link.
+- **Curation trail** — every trial carries checked date, curator, clinician-review status, next-review date, source text per requirement, and a `verified` flag.
+- **Automated tests** (`vitest`) — matching, dataset/aggregation, gene normalization, and inquiry generation. Run with `npm test`.
 
-The five scenarios the slice supports (all verified):
-1. a gene-specific trial, 2. a user whose gene matches, 3. a user without genetic testing, 4. a user whose gene does **not** match, and 5. a clinical criterion that only a trial site can confirm.
+## What's still a demonstration (and the priorities)
+
+- **The trial dataset is illustrative.** All four entries are examples (the gene-agnostic, RPGR, and stage-dependent ones are explicitly fictional; the RHO entry is unverified). **The #1 task is replacing these with real, verified trials** — the tool's usefulness scales entirely with that curated data.
+- **No clinician review yet** (`verified: false`, `clinicianReviewed: false`). At least one qualified clinical/genetic-counseling review is needed before public promotion.
+- **Location is collected but not yet used** to sort sites by distance (geographic ranking is the next milestone).
+- **Site contacts** aren't normalized yet (locations are shown; names/emails/phones are not).
 
 ## Architecture
 
-- **Next.js (App Router) + TypeScript + Tailwind**, deployable free on Vercel.
-- `lib/types.ts` — curated trial + requirement schema.
-- `lib/matching.ts` — **deterministic** rules (no AI, no "match %").
-- `data/trials.ts` — curated trial rules (source text + logic).
-- `app/check/page.tsx` — the intake form + results.
-- **Separation of concerns:** ClinicalTrials.gov will own *changing facts* (status, locations, contacts) via a serverless API route (Milestone 2); this curated layer owns the *readiness logic*.
+Next.js (App Router) + TypeScript + Tailwind, deployable free on Vercel. ClinicalTrials.gov owns changing facts (fetched live); the curated layer owns the readiness logic + source text.
 
 ## Run locally
 
 ```bash
 npm install
-npm run dev
-# open http://localhost:3000
+npm run dev      # http://localhost:3000
+npm test         # run the test suite
+npm run build    # production build
 ```
-
-Build: `npm run build`. (Deps and `.next` may already be present from the build check — you can delete `node_modules` and `.next` and reinstall for a clean copy.)
 
 ## Deploy (free)
 
-Push to GitHub → import into Vercel → deploy. No environment variables needed for v1.
+Push to GitHub → import into Vercel → deploy. No environment variables needed.
 
-## ⚠️ Safety & curation
+## ⚠️ Safety
 
-- The curated trial rules in `data/trials.ts` are an **illustrative first curation** for the slice. **Before any public launch, every rule must be checked against the official ClinicalTrials.gov record and reviewed by a clinician or genetic counselor** (set `reviewedBy` and `verified: true`).
-- Framing is deliberately conservative everywhere: "here is what this trial lists; confirm with your care team" — never "you qualify."
-
-## Roadmap
-
-- **M2 — live data:** Next.js serverless route to fetch/cache/normalize ClinicalTrials.gov v2 API (recruiting status, locations, contacts, last-updated), with a fallback when unavailable.
-- **M3 — expand safely:** 3 curated trials (gene-specific / gene-agnostic / phenotype-specific), the negative/inconclusive-result branch, geographic filtering, print/PDF, accessibility pass.
-- **M4 — distribution:** launch page, 1-minute demo, feedback form, posts to IRD communities, outreach to nonprofits/genetic counselors, usage dashboard.
-
-## What to measure
-
-Completed readiness checks · trial pages reviewed · checklist prints · clicks to official trial contacts · users who report discovering a requirement they didn't know about. Core question: *did this help you understand what you need before contacting a trial site?*
+Educational only. No diagnosis, no eligibility determination, no genetic-result interpretation. Every curated rule must be verified against the official record (and ideally clinician-reviewed) before the tool is promoted to patients.

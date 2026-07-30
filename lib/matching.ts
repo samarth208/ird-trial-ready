@@ -11,9 +11,10 @@ import type {
   TrialLabel,
   TrialRequirement,
 } from "./types";
+import { normalizeGeneSymbol } from "./genes";
 
 function normalizeGene(g: string): string {
-  return g.trim().toUpperCase();
+  return normalizeGeneSymbol(g);
 }
 function normalizeVariant(v: string): string {
   return v.replace(/\s+/g, "").toLowerCase();

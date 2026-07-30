@@ -93,6 +93,18 @@ export interface LiveTrialFacts {
   fetchedAt: string;
 }
 
+// A lightly-normalized trial from the discovery search (not curated / not eligibility-analyzed).
+export interface DiscoveredTrial {
+  nctId: string;
+  title: string;
+  overallStatus: string;
+  phase: string;
+  conditions: string[];
+  lastUpdatedAt: string;
+  locations: Array<{ facility?: string; city?: string; state?: string; country?: string; status?: string; lat?: number; lon?: number }>;
+  url: string;
+}
+
 // ---- Results ----
 
 export type RequirementStatus = "confirmed" | "needs_information" | "conflict";

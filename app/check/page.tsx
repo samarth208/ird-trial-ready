@@ -9,6 +9,7 @@ import { IRD_GENES } from "@/lib/genes";
 import { geocodeUsZip, isUsZip, nearestSite, type Coord } from "@/lib/geo";
 import type {
   CuratedTrial,
+  DiscoveredTrial,
   LiveTrialFacts,
   PatientAnswers,
   RequirementResult,
@@ -186,11 +187,6 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
     () => CURATED_TRIALS.map((t) => ({ trial: t, evaluation: evaluateTrial(t, answers) })),
     [answers]
   );
-  const counts = useMemo(
-    () => GROUP_ORDER.map((g) => ({ g, n: evaluations.filter((e) => e.evaluation.label === g).length })),
-    [evaluations]
-  );
-
   const [userCoord, setUserCoord] = useState<Coord | null>(null);
   useEffect(() => {
     const loc = (answers.location ?? "").trim();
@@ -217,12 +213,26 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
     });
   }, []);
 
+  const [showClosed, setShowClosed] = useState(false);
+  const [showAllDisc, setShowAllDisc] = useState(false);
+  const [discovered, setDiscovered] = useState<DiscoveredTrial[] | null>(null);
+  useEffect(() => {
+    fetch("/api/search")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setDiscovered(Array.isArray(d.trials) ? d.trials : []))
+      .catch(() => setDiscovered([]));
+  }, []);
+
   // A trial is demoted to "closed" only once we KNOW (live) it isn't recruiting.
   const groupOf = (nctId: string, label: TrialLabel): TrialLabel | "closed" => {
     const facts = liveMap[nctId];
     if (facts && facts.overallStatus && !isRecruitingStatus(facts.overallStatus)) return "closed";
     return label;
   };
+  const openEvals = evaluations.filter((e) => groupOf(e.trial.nctId, e.evaluation.label) !== "closed");
+  const closedEvals = evaluations.filter((e) => groupOf(e.trial.nctId, e.evaluation.label) === "closed");
+  const curatedIds = new Set(CURATED_TRIALS.map((t) => t.nctId));
+  const otherTrials = (discovered ?? []).filter((t) => !curatedIds.has(t.nctId));
 
   return (
     <div>
@@ -239,12 +249,23 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
       </div>
 
       <p className="mt-2 text-sm text-slate-600">
-        Based on what you entered, here's how {evaluations.length} trials line up —{" "}
-        {counts
-          .filter((c) => c.n > 0)
-          .map((c) => `${c.n} ${GROUP_TITLE[c.g].toLowerCase()}`)
-          .join(", ")}
-        .
+        {openEvals.length > 0 ? (
+          <>
+            {openEvals.length} currently-recruiting {openEvals.length === 1 ? "trial" : "trials"} match your profile
+            {(() => {
+              const parts = GROUP_ORDER.map((g) => {
+                const n = openEvals.filter((e) => e.evaluation.label === g).length;
+                return n ? `${n} ${GROUP_TITLE[g].toLowerCase()}` : null;
+              }).filter(Boolean);
+              return parts.length ? ` — ${parts.join(", ")}` : "";
+            })()}
+            .
+          </>
+        ) : (
+          <>No currently-recruiting trials match your profile yet.</>
+        )}
+        {closedEvals.length > 0 &&
+          ` ${closedEvals.length} related ${closedEvals.length === 1 ? "study is" : "studies are"} not currently recruiting.`}
       </p>
 
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
@@ -268,18 +289,54 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
         );
       })}
 
-      {(() => {
-        const closed = evaluations.filter((e) => groupOf(e.trial.nctId, e.evaluation.label) === "closed");
-        if (!closed.length) return null;
-        return (
-          <div>
-            <h3 className="mt-6 mb-1 text-sm font-bold text-slate-500">Not currently recruiting · {closed.length}</h3>
-            {closed.map(({ trial, evaluation }) => (
+      {openEvals.length === 0 && (
+        <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
+          No trials in our current set are recruiting for your profile. That may reflect a thin trial landscape right
+          now — more real trials are being added, and an alert can tell you when a matching one opens.
+        </div>
+      )}
+
+      {closedEvals.length > 0 && (
+        <div className="mt-6">
+          <button
+            onClick={() => setShowClosed((s) => !s)}
+            className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+          >
+            {showClosed ? "Hide" : "Show"} {closedEvals.length} {closedEvals.length === 1 ? "study" : "studies"} not
+            currently recruiting {showClosed ? "▲" : "▼"}
+          </button>
+          {showClosed &&
+            closedEvals.map(({ trial, evaluation }) => (
               <TrialCard key={trial.nctId} trial={trial} evaluation={evaluation} answers={answers} userCoord={userCoord} live={liveMap[trial.nctId]} />
             ))}
-          </div>
-        );
-      })()}
+        </div>
+      )}
+
+      <div className="mt-8">
+        <h3 className="text-sm font-bold text-slate-800">More recruiting RP trials from ClinicalTrials.gov</h3>
+        <p className="text-xs text-slate-500">
+          Pulled live from the full registry — comprehensive, but not yet reviewed for eligibility here.
+        </p>
+        {discovered === null ? (
+          <p className="mt-2 text-xs text-slate-400">Loading trials from ClinicalTrials.gov…</p>
+        ) : otherTrials.length === 0 ? (
+          <p className="mt-2 text-xs text-slate-400">No additional recruiting RP trials found right now.</p>
+        ) : (
+          <>
+            {otherTrials.slice(0, showAllDisc ? otherTrials.length : 8).map((t) => (
+              <DiscoveredCard key={t.nctId} trial={t} userCoord={userCoord} />
+            ))}
+            {otherTrials.length > 8 && (
+              <button
+                onClick={() => setShowAllDisc((s) => !s)}
+                className="mt-2 text-xs font-semibold text-brand-700 hover:underline"
+              >
+                {showAllDisc ? "Show fewer" : `Show all ${otherTrials.length}`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
         This is not a determination of eligibility. Trial requirements change; always confirm the current
@@ -519,6 +576,29 @@ function TrialCard({
       )}
         </div>
       )}
+    </div>
+  );
+}
+
+function DiscoveredCard({ trial, userCoord }: { trial: DiscoveredTrial; userCoord: Coord | null }) {
+  const nearest = userCoord ? nearestSite(userCoord, trial.locations) : null;
+  return (
+    <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium text-slate-800">{trial.title}</p>
+        <a href={trial.url} target="_blank" rel="noreferrer" className="shrink-0 text-xs font-medium text-brand-700 underline">
+          Open →
+        </a>
+      </div>
+      <p className="mt-0.5 text-xs text-slate-500">
+        {trial.nctId} · {trial.phase}
+        {nearest
+          ? ` · nearest ${nearest.miles} mi`
+          : trial.locations.length
+          ? ` · ${trial.locations.length} site(s)`
+          : ""}
+      </p>
+      <p className="text-[11px] text-slate-400">Not yet reviewed — eligibility not analyzed here.</p>
     </div>
   );
 }

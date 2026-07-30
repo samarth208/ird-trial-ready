@@ -21,7 +21,7 @@ describe("gene normalization", () => {
 });
 
 describe("alias flows through matching", () => {
-  const rpgr = CURATED_TRIALS.find((t) => t.nctId === "EXAMPLE-RPGR")!;
+  const rpgr = CURATED_TRIALS.find((t) => t.nctId === "NCT03116113")!;
   it("a user entering the RP3 alias matches the RPGR trial's gene requirement", () => {
     const a: PatientAnswers = { age: 30, geneticTestingDone: "yes", resultType: "gene_identified", gene: "RP3", priorGeneTherapy: "no" };
     const gene = evaluateTrial(rpgr, a).results.find((r) => r.requirementId === "gene");

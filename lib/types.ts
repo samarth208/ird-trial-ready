@@ -13,6 +13,7 @@ export type YesNoUnknown = "yes" | "no" | "unknown";
 // What the patient tells us. Nothing here is a clinical measurement.
 export interface PatientAnswers {
   age?: number; // exact age (validated 1–120), used deterministically
+  sex?: "male" | "female" | "prefer_not"; // some trials (e.g. X-linked) are sex-specific
   country?: string; // used for finding nearby sites (with live locations)
   location?: string; // ZIP or city — used for finding nearby sites (with live locations)
   condition?: string;
@@ -50,6 +51,7 @@ interface RequirementBase {
 
 export type TrialRequirement =
   | (RequirementBase & { type: "age"; minimum?: number; maximum?: number; canSelfReport: true })
+  | (RequirementBase & { type: "sex"; requiredSex: "male" | "female"; canSelfReport: true })
   | (RequirementBase & { type: "gene"; acceptedGenes: string[]; canSelfReport: true })
   | (RequirementBase & { type: "variant"; acceptedVariants: string[]; canSelfReport: true })
   | (RequirementBase & {

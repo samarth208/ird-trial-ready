@@ -50,6 +50,19 @@ function evaluateAge(
   };
 }
 
+function evaluateSex(
+  req: Extract<TrialRequirement, { type: "sex" }>,
+  a: PatientAnswers
+): RequirementResult {
+  const b = base(req);
+  if (!a.sex || a.sex === "prefer_not") {
+    return { ...b, status: "needs_information", explanation: "Add your sex to check this requirement." };
+  }
+  return a.sex === req.requiredSex
+    ? { ...b, status: "confirmed", explanation: `This trial enrolls ${req.requiredSex} participants, which matches what you entered.` }
+    : { ...b, status: "conflict", explanation: `This trial enrolls only ${req.requiredSex} participants.` };
+}
+
 function evaluateGene(
   req: Extract<TrialRequirement, { type: "gene" }>,
   a: PatientAnswers
@@ -123,6 +136,8 @@ export function evaluateRequirement(req: TrialRequirement, a: PatientAnswers): R
   switch (req.type) {
     case "age":
       return evaluateAge(req, a);
+    case "sex":
+      return evaluateSex(req, a);
     case "gene":
       return evaluateGene(req, a);
     case "variant":

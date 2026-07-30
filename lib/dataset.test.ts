@@ -4,8 +4,19 @@ import { evaluateTrial } from "@/lib/matching";
 import type { PatientAnswers } from "@/lib/types";
 
 const rho = CURATED_TRIALS.find((t) => t.nctId === "NCT06952842")!;
-const rpgr = CURATED_TRIALS.find((t) => t.nctId === "EXAMPLE-RPGR")!;
+const rpgr = CURATED_TRIALS.find((t) => t.nctId === "NCT03116113")!;
 const agnostic = CURATED_TRIALS.find((t) => t.nctId === "EXAMPLE-AGNOSTIC")!;
+
+describe("sex-specific (X-linked) matching", () => {
+  it("a female user conflicts with a male-only trial; a male user is consistent", () => {
+    const male: PatientAnswers = { sex: "male", age: 20, geneticTestingDone: "yes", resultType: "gene_identified", gene: "RPGR", priorGeneTherapy: "no" };
+    const female: PatientAnswers = { ...male, sex: "female" };
+    const sexReq = (a: PatientAnswers) => evaluateTrial(rpgr, a).results.find((r) => r.requirementId === "sex")?.status;
+    expect(sexReq(male)).toBe("confirmed");
+    expect(sexReq(female)).toBe("conflict");
+    expect(evaluateTrial(rpgr, female).label).toBe("requirement_does_not_match");
+  });
+});
 
 describe("multi-trial dataset (aggregation)", () => {
   it("covers both gene-specific and gene-agnostic patterns", () => {

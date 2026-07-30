@@ -37,21 +37,31 @@ export const CURATED_TRIALS: CuratedTrial[] = [
     ],
   },
 
+  // REAL trial — criteria transcribed from the public ClinicalTrials.gov listing.
+  // Still verified: false until checked against the official protocol + clinician-reviewed.
   {
-    nctId: "EXAMPLE-RPGR",
-    title: "Example: gene therapy for X-linked RPGR retinitis pigmentosa",
+    nctId: "NCT03116113",
+    title: "Retinal gene therapy for X-linked RP (RPGR) — cotoretigene toliparvovec (BIIB112)",
     conditionGroup: "RP",
     geneSpecific: true,
     verified: false,
-    example: true,
-    travelSupport: "described",
-    sourceUrl: "https://clinicaltrials.gov/search?cond=Retinitis%20Pigmentosa&term=RPGR",
-    curation: curatedNow,
+    example: false,
+    travelSupport: "unknown",
+    sourceUrl: "https://clinicaltrials.gov/study/NCT03116113",
+    curation: {
+      checkedAt: "2026-07-28",
+      checkedBy: "project maintainer",
+      clinicianReviewed: false,
+      nextReviewBy: "2026-08-27",
+      reviewNotes:
+        "Criteria transcribed from the public ClinicalTrials.gov listing; verify against the official protocol before launch.",
+    },
     requirements: [
-      { id: "gene", type: "gene", label: "Confirmed mutation in the RPGR gene", acceptedGenes: ["RPGR"], canSelfReport: true, sourceSection: "inclusion", sourceText: "Participants must have a genetically confirmed disease-causing variant in the RPGR gene." },
-      { id: "age", type: "age", label: "Age 18–50 years", minimum: 18, maximum: 50, canSelfReport: true, sourceSection: "inclusion", sourceText: "Participants must be 18–50 years of age." },
-      { id: "residual_function", type: "clinical_confirmation", label: "Measurable residual retinal function", canSelfReport: false, sourceSection: "inclusion", sourceText: "Sufficient residual retinal function must be present, as measured at the study site." },
-      { id: "no_prior_gt", type: "prior_treatment", label: "No previous ocular gene therapy", excludedTreatments: ["gene_therapy"], canSelfReport: true, sourceSection: "exclusion", sourceText: "Prior ocular gene therapy is an exclusion criterion." },
+      { id: "gene", type: "gene", label: "Confirmed RPGR mutation (X-linked RP)", acceptedGenes: ["RPGR"], canSelfReport: true, sourceSection: "inclusion", sourceText: "Genetically confirmed diagnosis of X-linked retinitis pigmentosa with a mutation in the RPGR gene." },
+      { id: "sex", type: "sex", label: "Male", requiredSex: "male", canSelfReport: true, sourceSection: "inclusion", sourceText: "Participants must be male." },
+      { id: "age", type: "age", label: "Age 10 years or older", minimum: 10, canSelfReport: true, sourceSection: "inclusion", sourceText: "Participants must be at least 10 years of age." },
+      { id: "retinal_sensitivity", type: "clinical_confirmation", label: "Retinal sensitivity within a specified range", canSelfReport: false, sourceSection: "inclusion", sourceText: "Mean total retinal sensitivity in the study eye between 0.1 dB and 8 dB, as assessed by microperimetry at the study site." },
+      { id: "no_prior_gt", type: "prior_treatment", label: "No previous gene therapy", excludedTreatments: ["gene_therapy"], canSelfReport: true, sourceSection: "exclusion", sourceText: "Prior participation in a gene therapy trial is an exclusion criterion." },
     ],
   },
 

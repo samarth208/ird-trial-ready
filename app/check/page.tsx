@@ -81,6 +81,12 @@ export default function CheckPage() {
             />
             <p className="mt-1 text-xs text-slate-400">Exact age checks age limits precisely. Stored only in your browser.</p>
           </div>
+          <RadioRow
+            label="Sex"
+            value={a.sex}
+            onChange={(v) => update("sex", v as PatientAnswers["sex"])}
+            options={[["male", "Male"], ["female", "Female"], ["prefer_not", "Prefer not to say"]]}
+          />
           <SelectRow label="Diagnosed condition" value={a.condition ?? ""} onChange={(v) => update("condition", v)} options={CONDITIONS} />
           <div className="grid sm:grid-cols-2 gap-4">
             <TextRow label="Country" value={a.country ?? ""} onChange={(v) => update("country", v)} placeholder="United States" />

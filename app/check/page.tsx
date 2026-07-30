@@ -225,8 +225,9 @@ function Results({ answers, onBack }: { answers: PatientAnswers; onBack: () => v
       </p>
 
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-        These are real trials, with eligibility transcribed from ClinicalTrials.gov and pending final
-        verification. Always confirm the current criteria with the official listing and your care team.
+        <b className="text-slate-700">Coverage so far:</b> RPGR, RHO, and USH2A trials — this is <b>not yet</b> the
+        full IRD trial landscape, and more are being added. Eligibility is transcribed from ClinicalTrials.gov and
+        pending verification; always confirm the current criteria with the official listing and your care team.
       </div>
 
       {GROUP_ORDER.map((group) => {
@@ -273,6 +274,7 @@ function TrialCard({
   const inquiry = buildInquiryMessage(trial, answers, evaluation);
   const [copied, setCopied] = useState(false);
   const [showInquiry, setShowInquiry] = useState(false);
+  const [open, setOpen] = useState(false);
   const [live, setLive] = useState<LiveTrialFacts | null>(null);
   const [liveError, setLiveError] = useState(false);
 
@@ -298,18 +300,26 @@ function TrialCard({
   const todo = evaluation.results.filter((r) => r.status !== "confirmed");
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-5">
-      <div className="flex flex-wrap items-start justify-between gap-2">
+    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-start justify-between gap-3 text-left">
         <div>
           {trial.title && <p className="font-semibold text-slate-900">{trial.title}</p>}
-          <p className="text-xs text-slate-400">{trial.nctId}</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {done.length} you can confirm · {todo.length} to sort out
+            {nearest ? ` · nearest ${nearest.miles} mi` : ""}
+          </p>
         </div>
-        <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${LABEL_STYLE[evaluation.label]}`}>
-          {shortLabel(evaluation.label)}
+        <span className="flex shrink-0 items-center gap-2">
+          <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${LABEL_STYLE[evaluation.label]}`}>
+            {shortLabel(evaluation.label)}
+          </span>
+          <span className="text-slate-400">{open ? "▲" : "▼"}</span>
         </span>
-      </div>
+      </button>
 
-      <p className="mt-2 text-sm text-slate-700">{takeaway}</p>
+      {open && (
+        <div className="mt-3">
+      <p className="text-sm text-slate-700">{takeaway}</p>
 
       <div className="mt-2 text-xs text-slate-500">
         {live ? (
@@ -433,6 +443,8 @@ function TrialCard({
         <p className="mt-2 text-[11px] text-slate-400">
           Eligibility here is transcribed from the public listing and pending verification against the official record.
         </p>
+      )}
+        </div>
       )}
     </div>
   );
